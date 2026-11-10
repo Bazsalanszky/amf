@@ -158,11 +158,22 @@ type NetworkFeatureSupport5GS struct {
 }
 
 type Sbi struct {
-	Scheme       string `yaml:"scheme"`
-	TLS          *TLS   `yaml:"tls"`
-	RegisterIPv4 string `yaml:"registerIPv4,omitempty"` // IP that is registered at NRF.
-	BindingIPv4  string `yaml:"bindingIPv4,omitempty"`  // IP used to run the server in the node.
-	Port         int    `yaml:"port,omitempty"`
+	Scheme string `yaml:"scheme"`
+	TLS    *TLS   `yaml:"tls"`
+	// Address registered at the NRF: an IPv4 address, an IPv6 address, a host
+	// name, or the name of an environment variable holding one (POD_IP) or a
+	// comma-separated list (POD_IPS). Each address goes to the field of its
+	// own family, whichever of the two keys it is given under.
+	RegisterIPv4 string `yaml:"registerIPv4,omitempty"`
+	RegisterIPv6 string `yaml:"registerIPv6,omitempty"`
+	// Address the SBI server listens on, of either family (or an environment
+	// variable name). BindingAddr wins; BindingIPv4 is its legacy alias.
+	BindingAddr string `yaml:"bindingAddr,omitempty"`
+	BindingIPv4 string `yaml:"bindingIPv4,omitempty"`
+	// Family used for the AMF's own URIs and for peer addresses when both
+	// families are available: IPv4 (default) or IPv6.
+	PreferredFamily string `yaml:"preferredFamily,omitempty"`
+	Port            int    `yaml:"port,omitempty"`
 }
 
 type TLS struct {

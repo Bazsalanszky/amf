@@ -4,6 +4,7 @@
 package util
 
 import (
+	"cmp"
 	"testing"
 
 	"github.com/google/uuid"
@@ -19,12 +20,13 @@ func TestResolveRegisterIPv4(t *testing.T) {
 	t.Setenv("POD_IP", "")
 
 	tests := []struct {
-		name     string
-		input    string
-		expected string
+		name         string
+		input        string
+		expected     string
+		expectedIPv6 string
 	}{
 		{name: "literal ip", input: defaultNgapLocalIP, expected: defaultNgapLocalIP},
-		{name: "ipv6 literal rejected", input: "2001:db8::1", expected: ""},
+		{name: "ipv6 literal goes to the IPv6 slot", input: "2001:db8::1", expected: "", expectedIPv6: "2001:db8::1"},
 		{name: "service hostname", input: testAMFHostname, expected: testAMFHostname},
 		{name: "env var ip", input: "AMF_REGISTER_IP", expected: "10.10.0.1"},
 		{name: "env var hostname", input: "AMF_REGISTER_HOST", expected: "amf.namespace.svc.cluster.local"},
@@ -35,8 +37,12 @@ func TestResolveRegisterIPv4(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if got := resolveRegisterIPv4(test.input); got != test.expected {
-				t.Fatalf("resolveRegisterIPv4(%q) = %q, want %q", test.input, got, test.expected)
+			addrs := resolveRegisterAddrs(&factory.Sbi{RegisterIPv4: test.input})
+			if got := cmp.Or(addrs.FQDN, addrs.IPv4); got != test.expected {
+				t.Fatalf("resolveRegisterAddrs(%q): RegisterIPv4 = %q, want %q", test.input, got, test.expected)
+			}
+			if addrs.IPv6 != test.expectedIPv6 {
+				t.Fatalf("resolveRegisterAddrs(%q): RegisterIPv6 = %q, want %q", test.input, addrs.IPv6, test.expectedIPv6)
 			}
 		})
 	}

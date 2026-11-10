@@ -23,8 +23,10 @@ import (
 	"github.com/omec-project/amf/logger"
 	"github.com/omec-project/openapi/v2/models"
 	"github.com/omec-project/openapi/v2/nfConfigApi"
+	openapiutils "github.com/omec-project/openapi/v2/utils"
 	"github.com/omec-project/util/drsm"
 	"github.com/omec-project/util/idgenerator"
+	"github.com/omec-project/util/sbiaddr"
 )
 
 var (
@@ -69,13 +71,15 @@ type AMFContext struct {
 	Name                            string
 	NfService                       map[models.ServiceName]models.NFService // nfservice that amf support
 	UriScheme                       models.UriScheme
-	BindingIPv4                     string
+	BindingIPv4                     string // SBI listen host; despite the name, of either family
 	SBIPort                         int
 	Key                             string
 	PEM                             string
 	NgapPort                        int
 	SctpGrpcPort                    int
-	RegisterIPv4                    string
+	RegisterIPv4                    string // IPv4 address or host name registered at the NRF
+	RegisterIPv6                    string // IPv6 address registered at the NRF
+	SbiPreference                   sbiaddr.Preference
 	HttpIPv6Address                 string
 	TNLWeightFactor                 int64
 	SupportDnnLists                 []string
@@ -626,32 +630,49 @@ func (context *AMFContext) GetIPv4Uri() string {
 	return context.GetSbiUri()
 }
 
+// SbiAddrs classifies the registered hosts: RegisterIPv4 (an IPv4 address or
+// a host name) and RegisterIPv6. The fields are read literally, so code and
+// tests that set them directly get the same profile as the configuration
+// would. A value that is neither an address nor a host name is logged and
+// left out.
+func (context *AMFContext) SbiAddrs() sbiaddr.RegisterAddrs {
+	addrs, err := sbiaddr.ParseRegister(context.RegisterIPv4, context.RegisterIPv6)
+	if err != nil {
+		logger.ContextLog.Warnf("SBI register address: %v", err)
+	}
+	return addrs
+}
+
+// GetSbiUri is the AMF's own base URI, scheme://host:port, with an IPv6 host
+// in brackets. The host is the registered FQDN, else the address of the
+// preferred family. When no registered value is usable, which only happens if
+// RegisterIPv4 was set directly to something that is not an address or a host
+// name, the old formatting is kept.
 func (context *AMFContext) GetSbiUri() string {
-	return fmt.Sprintf("%s://%s:%d", context.UriScheme, context.RegisterIPv4, context.SBIPort)
+	if uri := context.SbiAddrs().URI(string(context.UriScheme), context.SBIPort, context.SbiPreference); uri != "" {
+		return uri
+	}
+	return sbiaddr.URI(string(context.UriScheme), context.RegisterIPv4, context.SBIPort)
 }
 
 func (context *AMFContext) RegisterIPv4Address() string {
-	if ip := net.ParseIP(context.RegisterIPv4); ip != nil && ip.To4() != nil {
-		return context.RegisterIPv4
-	}
-	return ""
+	return context.SbiAddrs().IPv4
+}
+
+func (context *AMFContext) RegisterIPv6Address() string {
+	return context.SbiAddrs().IPv6
 }
 
 func (context *AMFContext) RegisterFQDN() string {
-	if context.RegisterIPv4Address() != "" {
-		return ""
-	}
-	return context.RegisterIPv4
+	return context.SbiAddrs().FQDN
 }
 
 func (context *AMFContext) InitNFService(serivceName []string, version string) {
 	tmpVersion := strings.Split(version, ".")
 	versionUri := "v" + tmpVersion[0]
+	addrs := context.SbiAddrs()
 	for index, nameString := range serivceName {
 		name := models.ServiceName(nameString)
-		ipEndPoint := models.NewIpEndPoint()
-		ipEndPoint.SetTransport(models.TRANSPORTPROTOCOL_TCP)
-		ipEndPoint.SetPort(int32(context.SBIPort))
 		nfService := models.NFService{
 			ServiceInstanceId: strconv.Itoa(index),
 			ServiceName:       name,
@@ -663,15 +684,13 @@ func (context *AMFContext) InitNFService(serivceName []string, version string) {
 			},
 			Scheme:          context.UriScheme,
 			NfServiceStatus: models.NFSERVICESTATUS_REGISTERED,
-			IpEndPoints: []models.IpEndPoint{
-				*ipEndPoint,
-			},
+			// One endpoint per registered family, IPv4 first; only the port
+			// when the AMF registers an FQDN.
+			IpEndPoints: openapiutils.NewIpEndPoints(addrs.IPv4, addrs.IPv6, int32(context.SBIPort)),
 		}
 		nfService.SetApiPrefix(context.GetSbiUri())
-		if registerIPv4 := context.RegisterIPv4Address(); registerIPv4 != "" {
-			nfService.IpEndPoints[0].SetIpv4Address(registerIPv4)
-		} else if fqdn := context.RegisterFQDN(); fqdn != "" {
-			nfService.SetFqdn(fqdn)
+		if addrs.FQDN != "" {
+			nfService.SetFqdn(addrs.FQDN)
 		}
 		context.NfService[name] = nfService
 	}
@@ -710,6 +729,8 @@ func (context *AMFContext) Reset() {
 	context.SBIPort = 0
 	context.BindingIPv4 = ""
 	context.RegisterIPv4 = ""
+	context.RegisterIPv6 = ""
+	context.SbiPreference = sbiaddr.PreferIPv4
 	context.HttpIPv6Address = ""
 	context.Name = "amf"
 	context.NrfUri = ""

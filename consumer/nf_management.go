@@ -19,6 +19,7 @@ import (
 	"github.com/omec-project/openapi/v2/Nnrf_NFManagement"
 	"github.com/omec-project/openapi/v2/models"
 	"github.com/omec-project/openapi/v2/nfConfigApi"
+	openapiutils "github.com/omec-project/openapi/v2/utils"
 	"go.opentelemetry.io/otel/attribute"
 )
 
@@ -66,15 +67,12 @@ func getNfProfile(amfCtx *amfContext.AMFContext, accessAndMobilityConfig []nfCon
 	}
 	amfInfo.TaiList = newSupportedTais
 	profile.SetAmfInfo(amfInfo)
-	if amfCtx.RegisterIPv4 == "" {
+	addrs := amfCtx.SbiAddrs()
+	if addrs.Empty() {
 		err = openapi.ReportError("AMF Address is empty")
 		return profile, err
 	}
-	if registerIPv4 := amfCtx.RegisterIPv4Address(); registerIPv4 != "" {
-		profile.SetIpv4Addresses(append(profile.Ipv4Addresses, registerIPv4))
-	} else if fqdn := amfCtx.RegisterFQDN(); fqdn != "" {
-		profile.SetFqdn(fqdn)
-	}
+	openapiutils.SetNFProfileAddresses(&profile, addrs.FQDN, addrs.IPv4, addrs.IPv6)
 	services := map[string]models.NFService{}
 	serviceList := []models.NFService{}
 	for _, nfService := range amfCtx.NfService {

@@ -1,3 +1,5 @@
+github.com/Bazsalanszky/ngap/v2 v2.0.0-20261110140545-d508096906e2 h1:SvtUn6ebBLemKHYY4Ac1mb6KLPt+1SOse5iAYLBToM0=
+github.com/Bazsalanszky/ngap/v2 v2.0.0-20261110140545-d508096906e2/go.mod h1:0jG8WzB2YXUhp638K915zYf/zLyQr3u1xhfrlgIM+8E=
 github.com/beorn7/perks v1.0.1 h1:VlbKKnNfV8bJzeqoa4cOKqO6bYr3WgKZxO8Z16+hsOM=
 github.com/beorn7/perks v1.0.1/go.mod h1:G2ZrVWU2WbWT9wwq4/hrbKbnv/1ERSJQ0ibhJ6rlkpw=
 github.com/bytedance/gopkg v0.1.4 h1:oZnQwnX82KAIWb7033bEwtxvTqXcYMxDBaQxo5JJHWM=
@@ -77,8 +79,6 @@ github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 h1:C3w9PqII01/Oq
 github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822/go.mod h1:+n7T8mK8HuQTcFwEeznm/DIxMOiR9yIdICNftLE1DvQ=
 github.com/omec-project/nas/v2 v2.2.7 h1:/J1tLIhEZ15EOtsWDVKvfII8eXQ71NUoEqUMGrhGND4=
 github.com/omec-project/nas/v2 v2.2.7/go.mod h1:TtlJFKCPs80lMhj2EiNUkpLntjFMDmdQbdLY+MyNJKI=
-github.com/omec-project/ngap/v2 v2.1.10 h1:ZesJILfiCH2sQOOp7hADlaN1ph02A20DTjrh48+rKxk=
-github.com/omec-project/ngap/v2 v2.1.10/go.mod h1:NKTZ+pd3jIJQMxScrHRROCpZHoR1sPgzRAXRpyXI0Js=
 github.com/omec-project/openapi/v2 v2.4.1 h1:eImH+0u66GWpw8ts+gKjzjk6cr7ugbU1J3KWY5TMV2k=
 github.com/omec-project/openapi/v2 v2.4.1/go.mod h1:hAx6N+3pprtGcwOnrFmJUThfGtKUPSmd+gy2V0cjjRM=
 github.com/omec-project/util v1.9.3 h1:13P4nmonY//ruqWAlA7icjohHGTijeD6Pc2U+cURfO8=

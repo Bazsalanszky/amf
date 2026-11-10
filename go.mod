@@ -84,3 +84,5 @@ require (
 	google.golang.org/genproto/googleapis/api v0.0.0-20261026165753-2ffab32bce7e // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20261026165753-2ffab32bce7e // indirect
 )
+
+replace github.com/omec-project/ngap/v2 => github.com/Bazsalanszky/ngap/v2 v2.0.0-20261110140545-d508096906e2

@@ -8,9 +8,8 @@
 package util
 
 import (
-	"net"
+	"cmp"
 	"os"
-	"regexp"
 	"time"
 
 	"github.com/google/uuid"
@@ -20,9 +19,8 @@ import (
 	"github.com/omec-project/nas/v2/security"
 	"github.com/omec-project/openapi/v2/models"
 	"github.com/omec-project/util/drsm"
+	"github.com/omec-project/util/sbiaddr"
 )
-
-var registerIPv4HostnamePattern = regexp.MustCompile(`^(?i:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*)$`)
 
 // defaultDrsmMongoURL is the fallback MongoDB URL used when no MongoDB URL is
 // configured. DRSM relies on MongoDB change streams (collection.Watch), which
@@ -44,37 +42,37 @@ func resolveStableAmfNfId(configuration *factory.Configuration) string {
 		if configuration.AmfName != "" {
 			return uuid.NewSHA1(uuid.NameSpaceOID, []byte(configuration.AmfName)).String()
 		}
-		if configuration.Sbi != nil && configuration.Sbi.RegisterIPv4 != "" {
-			if registerIPv4 := resolveRegisterIPv4(configuration.Sbi.RegisterIPv4); registerIPv4 != "" {
-				return uuid.NewSHA1(uuid.NameSpaceOID, []byte(registerIPv4)).String()
+		if configuration.Sbi != nil {
+			// The FQDN, else the IPv4 address, else the IPv6 address: the same
+			// string as before for IPv4 and FQDN registrations.
+			if host := resolveRegisterAddrs(configuration.Sbi).Host(sbiaddr.PreferIPv4); host != "" {
+				return uuid.NewSHA1(uuid.NameSpaceOID, []byte(host)).String()
 			}
 		}
 	}
 	return uuid.New().String()
 }
 
-func resolveRegisterIPv4(registerIPv4 string) string {
-	if registerIPv4 == "" {
-		return ""
+// resolveRegisterAddrs resolves sbi.registerIPv4 and sbi.registerIPv6 into the
+// addresses the AMF registers at the NRF. Either key may hold an IPv4 or IPv6
+// address, a host name, or the name of an environment variable (POD_IP,
+// POD_IPS); each address goes to the slot of its own family. Unusable values
+// are logged and skipped; the result is empty when nothing usable is left.
+func resolveRegisterAddrs(sbi *factory.Sbi) sbiaddr.RegisterAddrs {
+	if sbi == nil {
+		return sbiaddr.RegisterAddrs{}
 	}
-	if envRegisterIPv4 := os.Getenv(registerIPv4); envRegisterIPv4 != "" {
-		if isValidRegisterIPv4Value(envRegisterIPv4) {
-			return envRegisterIPv4
-		}
-		logger.UtilLog.Warnf("RegisterIPv4 env var %q does not contain a valid address: %q", registerIPv4, envRegisterIPv4)
+	addrs, err := sbiaddr.ResolveRegister(sbi.RegisterIPv4, sbi.RegisterIPv6)
+	if err != nil {
+		logger.UtilLog.Warnf("SBI register address: %v", err)
 	}
-	if isValidRegisterIPv4Value(registerIPv4) {
-		return registerIPv4
+	if addrs.Empty() && (sbi.RegisterIPv4 != "" || sbi.RegisterIPv6 != "") {
+		logger.UtilLog.Warnf("no usable SBI register address; using default %s", factory.AMF_DEFAULT_IPV4)
 	}
-	logger.UtilLog.Warnf("RegisterIPv4 value %q is not a valid address; using default", registerIPv4)
-	return ""
-}
-
-func isValidRegisterIPv4Value(registerIPv4 string) bool {
-	if ip := net.ParseIP(registerIPv4); ip != nil {
-		return ip.To4() != nil
+	if addrs.FQDN != "" && addrs.IPv4 != "" {
+		logger.UtilLog.Warnf("SBI register address: registering FQDN %s, not IPv4 %s", addrs.FQDN, addrs.IPv4)
 	}
-	return registerIPv4HostnamePattern.MatchString(registerIPv4)
+	return addrs
 }
 
 func resolveDrsmMongoURL(configuration *factory.Configuration) string {
@@ -122,13 +120,19 @@ func InitAmfContext(amfContext *context.AMFContext) {
 		logger.UtilLog.Warnln("SBI scheme has not been set. Using http as default")
 		amfContext.UriScheme = "http"
 	}
-	amfContext.RegisterIPv4 = factory.AMF_DEFAULT_IPV4 // default localhost
-	amfContext.SBIPort = factory.AMF_DEFAULT_PORT_INT  // default port
+	addrs := resolveRegisterAddrs(sbi)
+	if addrs.Empty() {
+		addrs.IPv4 = factory.AMF_DEFAULT_IPV4 // default localhost
+	}
+	// An FQDN takes the legacy field, as before; IPv6 is registered next to it.
+	amfContext.RegisterIPv4 = cmp.Or(addrs.FQDN, addrs.IPv4)
+	amfContext.RegisterIPv6 = addrs.IPv6
+	amfContext.SbiPreference = sbiaddr.PreferIPv4
+	amfContext.SBIPort = factory.AMF_DEFAULT_PORT_INT // default port
 	if sbi != nil {
-		if sbi.RegisterIPv4 != "" {
-			if registerIPv4 := resolveRegisterIPv4(sbi.RegisterIPv4); registerIPv4 != "" {
-				amfContext.RegisterIPv4 = registerIPv4
-			}
+		var err error
+		if amfContext.SbiPreference, err = sbiaddr.ParsePreference(sbi.PreferredFamily); err != nil {
+			logger.UtilLog.Warnf("SBI preferredFamily: %v; using IPv4", err)
 		}
 		if sbi.Port != 0 {
 			amfContext.SBIPort = sbi.Port
@@ -141,15 +145,16 @@ func InitAmfContext(amfContext *context.AMFContext) {
 				amfContext.PEM = tls.PEM
 			}
 		}
-		amfContext.BindingIPv4 = os.Getenv(sbi.BindingIPv4)
-		if amfContext.BindingIPv4 != "" {
+		// bindingAddr wins over its legacy alias bindingIPv4; either may name
+		// an environment variable. The log lines are the ones operators knew.
+		bindingAddr := cmp.Or(sbi.BindingAddr, sbi.BindingIPv4)
+		if bindingAddr != "" && os.Getenv(bindingAddr) != "" {
 			logger.UtilLog.Infoln("parsing ServerIPv4 address from ENV Variable")
-		} else {
-			amfContext.BindingIPv4 = sbi.BindingIPv4
-			if amfContext.BindingIPv4 == "" {
-				logger.UtilLog.Warnln("error parsing ServerIPv4 address from string. Using the 0.0.0.0 as default")
-				amfContext.BindingIPv4 = "0.0.0.0"
-			}
+		} else if bindingAddr == "" {
+			logger.UtilLog.Warnln("error parsing ServerIPv4 address from string. Using the 0.0.0.0 as default")
+		}
+		if amfContext.BindingIPv4, err = sbiaddr.BindHost(sbi.BindingAddr, sbi.BindingIPv4); err != nil {
+			logger.UtilLog.Warnf("SBI binding address: %v", err)
 		}
 	}
 	serviceNameList := configuration.ServiceNameList

@@ -84,3 +84,7 @@ require (
 	google.golang.org/genproto/googleapis/api v0.0.0-20261026165753-2ffab32bce7e // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20261026165753-2ffab32bce7e // indirect
 )
+
+replace github.com/omec-project/util => github.com/Bazsalanszky/util v1.9.4-0.20261110170822-c04029c861b8
+
+replace github.com/omec-project/openapi/v2 => github.com/Bazsalanszky/openapi/v2 v2.4.2-0.20261110165928-4af8c8483548

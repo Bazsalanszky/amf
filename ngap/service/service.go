@@ -120,27 +120,26 @@ func Run(addresses []string, port int, h NGAPHandler) {
 
 	captureServingPath()
 
-	ips := []net.IPAddr{}
-
-	for _, addr := range addresses {
-		if netAddr, err := net.ResolveIPAddr("ip", addr); err != nil {
-			logger.NgapLog.Errorf("error resolving address '%s': %v\n", addr, err)
-		} else {
-			logger.NgapLog.Debugf("resolved address '%s' to %s\n", addr, netAddr)
-			ips = append(ips, *netAddr)
-		}
-	}
-
+	ips, legacyIPs := ngapListenAddrs(addresses)
 	addr := &sctp.SCTPAddr{
 		IPAddrs: ips,
 		Port:    port,
 	}
+	var fallback []*sctp.SCTPAddr
+	if len(legacyIPs) != len(ips) {
+		fallback = append(fallback, &sctp.SCTPAddr{IPAddrs: legacyIPs, Port: port})
+	}
 
-	go listenAndServe(addr, h)
+	go listenAndServe(addr, h, fallback...)
 }
 
-func listenAndServe(addr *sctp.SCTPAddr, handler NGAPHandler) {
-	listener, err := sctpConfig.Listen("sctp", addr)
+// listenAndServe binds addr, or, if that fails, the first fallback that
+// works. Run passes every address of the configured names as addr and the
+// one-address-per-name list the AMF used to bind as the fallback.
+func listenAndServe(addr *sctp.SCTPAddr, handler NGAPHandler, fallback ...*sctp.SCTPAddr) {
+	listener, err := listenSCTP(func(candidate *sctp.SCTPAddr) (*sctp.SCTPListener, error) {
+		return sctpConfig.Listen("sctp", candidate)
+	}, append([]*sctp.SCTPAddr{addr}, fallback...)...)
 	if err != nil {
 		logger.NgapLog.Errorf("failed to listen: %+v", err)
 		bindFailed.Store(true)

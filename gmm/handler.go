@@ -1687,7 +1687,7 @@ func handleRequestedNssai(ctx ctxt.Context, ue *context.AmfUe, registrationReque
 				registerContext := models.NewRegistrationContextContainer(ueContext, anType, int32(ranUe.RanUeNgapId), *ranNodeId, amfSelf.Name, ue.GetLocation())
 				registerContext.SetRrcEstCause(ranUe.RRCEstablishmentCause)
 				registerContext.SetUeContextRequest(ranUe.UeContextRequest)
-				registerContext.SetAnN2IPv4Addr(ranUe.Ran.GnbIp)
+				setAnN2Addrs(registerContext, ranUe.Ran)
 				registerContext.SetAllowedNssai(*allowedNssai)
 
 				if len(ue.NetworkSliceInfo.RejectedNssaiInPlmn) > 0 {
